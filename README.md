@@ -1,6 +1,8 @@
 ofxImageSequencePlayer
 ======================
 
+- forked from julapy, added some features
+
 ofxImageSequencePlayer is a openFrameworks addon for playing image sequences.
 
 This is still not finished and not properly tested,
