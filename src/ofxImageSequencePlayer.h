@@ -44,6 +44,7 @@ public:
     float getSpeed();
     float getDuration();
     bool getIsMovieDone();
+    float getFrameRate();
 	
     void setPaused(bool bPause);
     void setPosition(float pct);
@@ -80,4 +81,5 @@ protected:
     float fps;
     float speed;
     ofLoopType loopType;
+    bool isPlayingBackwards; //for OF_LOOP_PALINDROME
 };

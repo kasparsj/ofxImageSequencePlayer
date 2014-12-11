@@ -3,6 +3,8 @@
 //  Created by Lukasz Karluk on 21/06/13.
 //  http://julapy.com/blog
 //
+//  edited by Brian Eschrich 11/12/14
+//
 
 #include "ofxImageSequencePlayer.h"
 
@@ -22,6 +24,7 @@ ofxImageSequencePlayer::ofxImageSequencePlayer() {
     fps = 30;
     speed = 1;
     loopType = OF_LOOP_NONE;
+    isPlayingBackwards = false;
 }
 
 ofxImageSequencePlayer::~ofxImageSequencePlayer() {
@@ -30,6 +33,7 @@ ofxImageSequencePlayer::~ofxImageSequencePlayer() {
 
 void ofxImageSequencePlayer::setFrameRate(float value) {
     fps = value;
+    duration = framesTotal / fps;
 }
 
 bool ofxImageSequencePlayer::loadMovie(string name) {
@@ -126,9 +130,40 @@ void ofxImageSequencePlayer::update() {
     // might need to rethink this.
     
     time += ofGetLastFrameTime();
-    float p = ofMap(time, 0.0, duration, 0.0, 1.0, true);
     
-    setPosition(p);
+    float newPos;
+    newPos = ofMap(time, 0.0, duration, 0.0, 1.0);
+    
+    switch (loopType) {
+        case OF_LOOP_NONE:
+            if (newPos > 1) {
+                newPos = 1;
+            }
+            break;
+        case OF_LOOP_NORMAL:
+            if (newPos > 1) {
+                time -= duration;
+                newPos -= 1;
+            }
+            break;
+        case OF_LOOP_PALINDROME:
+            if (!isPlayingBackwards && newPos >1) {
+                newPos -= 1;
+                time -= duration;
+                newPos = 1 - newPos;
+                isPlayingBackwards = true;
+            }else if (isPlayingBackwards){
+                newPos = 1.0 - newPos;
+                if (newPos < 0) {
+                    time -= duration;
+                    newPos *= -1;
+                    isPlayingBackwards = false;
+                }
+            }
+            break;
+    }
+    
+    setPosition(newPos);
 }
 
 bool ofxImageSequencePlayer::setPixelFormat(ofPixelFormat pixelFormat) {
@@ -252,6 +287,10 @@ bool ofxImageSequencePlayer::getIsMovieDone() {
     return bFinished;
 }
 
+float ofxImageSequencePlayer::getFrameRate() {
+    return fps;
+}
+
 void ofxImageSequencePlayer::setPaused(bool bPause) {
     bPaused = bPause;
 }
@@ -308,7 +347,6 @@ void ofxImageSequencePlayer::nextFrame() {
     if(isLoaded() == false) {
         return;
     }
-
     int index = getCurrentFrame() + 1;
     if(index > frameLastIndex) {
         if(loopType == OF_LOOP_NONE) {
@@ -318,8 +356,18 @@ void ofxImageSequencePlayer::nextFrame() {
             }
         } else if(loopType == OF_LOOP_NORMAL) {
             index = 0;
-        } else if(loopType == OF_LOOP_PALINDROME) {
-            // TODO.
+        }
+    }
+    if (loopType == OF_LOOP_PALINDROME) {
+        if (isPlayingBackwards) {
+            index = getCurrentFrame()-1;
+            if (index<0) {
+                index = 0;
+                isPlayingBackwards = false;
+            }
+        }else if (index>frameLastIndex){
+            index = frameLastIndex;
+            isPlayingBackwards = true;
         }
     }
     
@@ -337,8 +385,18 @@ void ofxImageSequencePlayer::previousFrame() {
             index = 0;
         } else if(loopType == OF_LOOP_NORMAL) {
             index = frameLastIndex;
-        } else if(loopType == OF_LOOP_PALINDROME) {
-            // TODO.
+        }
+    }
+    if (loopType == OF_LOOP_PALINDROME) {
+        if (isPlayingBackwards) {
+            index = getCurrentFrame()+1;
+            if (index>frameLastIndex) {
+                index = frameLastIndex;
+                isPlayingBackwards = false;
+            }
+        }else if (index<0){
+            index = 0;
+            isPlayingBackwards = true;
         }
     }
     
