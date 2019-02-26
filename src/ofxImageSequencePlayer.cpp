@@ -8,6 +8,12 @@
 
 #include "ofxImageSequencePlayer.h"
 
+const std::vector<std::string> ofxImageSequencePlayer::allowedExt = {"jpg", "jpeg", "png"};
+
+bool ofxImageSequencePlayer::isAllowedExt(std::string ext) {
+    return std::find(std::begin(allowedExt),  std::end(allowedExt), ext) != std::end(allowedExt);
+}
+
 ofxImageSequencePlayer::ofxImageSequencePlayer() {
     bLoaded = false;
     bPlaying = false;
@@ -25,6 +31,9 @@ ofxImageSequencePlayer::ofxImageSequencePlayer() {
     speed = 1;
     loopType = OF_LOOP_NONE;
     isPlayingBackwards = false;
+    
+    playerTex = nullptr;
+    tex.resize(1);
 }
 
 ofxImageSequencePlayer::~ofxImageSequencePlayer() {
@@ -36,18 +45,28 @@ void ofxImageSequencePlayer::setFrameRate(float value) {
     duration = framesTotal / fps;
 }
 
-bool ofxImageSequencePlayer::loadMovie(string name) {
+bool ofxImageSequencePlayer::load(std::string name) {
     close();
     
-    // curretly this is as basic as it gets.
-    // it loads all files from a directory.
-    // TODO :: check if files in directory are a sequence.
-    // TODO :: if a single file is passed, work out if its part of a sequence and load that sequence.
-    
-    ofDirectory dir(name);
-    int numOfFiles = dir.listDir();
-    for(int i=0; i<numOfFiles; i++) {
-        imageSequencePaths.push_back(dir.getPath(i));
+    ofFile file(name);
+    std::string dirPath = file.getEnclosingDirectory();
+    std::string ext = file.getExtension();
+    if (file.isDirectory()) {
+        dirPath = name;
+        ofDirectory dir(dirPath);
+        int numOfFiles = dir.listDir();
+        for(int i=0; i<numOfFiles; i++) {
+            ext = dir.getFile(i).getExtension();
+            if (isAllowedExt(ext)) {
+                std::pair<std::string, std::string> props = getPrefixAndNumber(name);
+                imageSequencePaths = getSequence(dirPath, props.first, props.second, ext);
+                break;
+            }
+        }
+    }
+    else {
+        std::pair<std::string, std::string> props = getPrefixAndNumber(name);
+        imageSequencePaths = getSequence(dirPath, props.first, props.second, ext);
     }
     
     bLoaded = imageSequencePaths.size() > 0;
@@ -55,19 +74,46 @@ bool ofxImageSequencePlayer::loadMovie(string name) {
         return false;
     }
     
-    bLoaded = loadMovie(imageSequencePaths);
+    bLoaded = load(imageSequencePaths);
     
     return bLoaded;
 }
 
-bool ofxImageSequencePlayer::loadMovie(const vector<string> & imagePaths) {
+std::pair<std::string, std::string> ofxImageSequencePlayer::getPrefixAndNumber(std::string name) {
+    ofFile file(name);
+    std::string number = "";
+    std::string prefix = file.getBaseName();
+    while (prefix.length() > 0 && isdigit(prefix[prefix.length() - 1])) {
+        number = prefix[prefix.length()-1] + number;
+        prefix = prefix.substr(0, prefix.length() - 1);
+    }
+    return std::pair<std::string, std::string>(prefix, number);
+}
+
+std::vector<std::string> ofxImageSequencePlayer::getSequence(std::string dirPath, std::string prefix, std::string number, std::string ext) {
+    std::vector<std::string> images;
+    ofDirectory dir(dirPath);
+    dir.allowExt(ext);
+    int numOfFiles = dir.listDir();
+    dir.sort();
+    for(int i=0; i<numOfFiles; i++) {
+        std::string baseName = dir.getFile(i).getBaseName();
+        if (baseName.substr(0, prefix.length()) == prefix && baseName.substr(prefix.length(), number.length()) == number) {
+            images.push_back(dir.getPath(i));
+            number = ofToString(ofToInt(number) + 1, number.length(), '0');
+        }
+    }
+    return images;
+}
+
+bool ofxImageSequencePlayer::load(const std::vector<std::string> & imagePaths) {
 
     for(int i=0; i<imagePaths.size(); i++) {
         string imagePath = imagePaths[i];
         ofTexture * imageTexture = new ofTexture();
         bool bLoaded = ofLoadImage(*imageTexture, imagePath);
         if(bLoaded == false) {
-            ofLog(OF_LOG_ERROR, "ofxImageSequencePlayer::loadMovie, could not load : " + imagePath);
+            ofLog(OF_LOG_ERROR, "ofxImageSequencePlayer::load, could not load : " + imagePath);
             delete imageTexture;
             imageTexture = NULL;
             continue;
@@ -88,6 +134,9 @@ bool ofxImageSequencePlayer::loadMovie(const vector<string> & imagePaths) {
     duration = framesTotal / fps;
     
     bNewFrame = true;
+    bUpdatePixels = true;
+    
+    playerTex = imageSequenceTextures[frameIndex];
     
     return bLoaded;
 }
@@ -97,6 +146,7 @@ void ofxImageSequencePlayer::close() {
     bPlaying = false;
     bPaused = false;
     bNewFrame = false;
+    bUpdatePixels = false;
     
     frameIndex = 0;
     frameLastIndex = 0;
@@ -112,6 +162,9 @@ void ofxImageSequencePlayer::close() {
         imageSequenceTextures[i] = NULL;
     }
     imageSequenceTextures.clear();
+    
+    playerTex = nullptr;
+    pixels.clear();
 }
 
 void ofxImageSequencePlayer::update() {
@@ -175,7 +228,7 @@ bool ofxImageSequencePlayer::setPixelFormat(ofPixelFormat pixelFormat) {
     return false;
 }
 
-ofPixelFormat ofxImageSequencePlayer::getPixelFormat() {
+ofPixelFormat ofxImageSequencePlayer::getPixelFormat() const {
     if(isLoaded() == false) {
         return OF_PIXELS_RGBA;
     }
@@ -198,10 +251,6 @@ void ofxImageSequencePlayer::play() {
 }
 
 void ofxImageSequencePlayer::stop() {
-    if(isLoaded() == false) {
-        return;
-    }
-    
     bPlaying = false;
     bPaused = false;
 
@@ -209,64 +258,78 @@ void ofxImageSequencePlayer::stop() {
     setPosition(0);
 }
 
-bool ofxImageSequencePlayer::isFrameNew() {
-    if(isLoaded() == false) {
-        return false;
-    }
-    
+bool ofxImageSequencePlayer::isFrameNew() const {
     return bNewFrame;
 }
 
-unsigned char * ofxImageSequencePlayer::getPixels() {
-    if(isLoaded() == false) {
-        return NULL;
+ofPixels & ofxImageSequencePlayer::getPixels() {
+    if (!bUpdatePixels) {
+        return pixels;
     }
     
-    // TODO.
-    return NULL;
-}
-
-ofPixelsRef	ofxImageSequencePlayer::getPixelsRef() {
-    static ofPixels dummy;
-    return dummy;
-}
-
-ofTexture * ofxImageSequencePlayer::getTexture() {
-    if(isLoaded() == false) {
-        return NULL;
-    }
+    playerTex->readToPixels(pixels);
     
-    ofTexture * texture = imageSequenceTextures[getCurrentFrame()];
-    return texture;
+    bUpdatePixels = false;
+    return pixels;
 }
 
-float ofxImageSequencePlayer::getWidth() {
+ofTexture & ofxImageSequencePlayer::getTexture() {
+    if(playerTex == nullptr){
+        return tex[0];
+    }else{
+        return *playerTex;
+    }
+}
+
+vector<ofTexture> & ofxImageSequencePlayer::getTexturePlanes(){
+    if(playerTex != nullptr){
+        tex.clear();
+        tex.push_back(*playerTex);
+    }
+    return tex;
+}
+
+//---------------------------------------------------------------------------
+const vector<ofTexture> & ofxImageSequencePlayer::getTexturePlanes() const{
+    if(playerTex != nullptr){
+        ofxImageSequencePlayer * mutThis = const_cast<ofxImageSequencePlayer*>(this);
+        mutThis->tex.clear();
+        mutThis->tex.push_back(*playerTex);
+    }
+    return tex;
+}
+
+void ofxImageSequencePlayer::setUseTexture(bool bUseTex) {
+    
+}
+
+float ofxImageSequencePlayer::getWidth() const {
     if(isLoaded() == false) {
         return 0;
     }
     
-    int w = getTexture()->getWidth();
+    int w = getTexture().getWidth();
     return w;
 }
 
-float ofxImageSequencePlayer::getHeight() {
+float ofxImageSequencePlayer::getHeight() const {
     if(isLoaded() == false) {
         return 0;
     }
     
-    int h = getTexture()->getHeight();
+    int h = getTexture().getHeight();
     return h;
 }
 
-bool ofxImageSequencePlayer::isPaused() {
+bool ofxImageSequencePlayer::isPaused() const {
     return bPaused;
 }
 
-bool ofxImageSequencePlayer::isLoaded() {
+bool ofxImageSequencePlayer::isLoaded() const {
     return bLoaded;
 }
 
-bool ofxImageSequencePlayer::isPlaying() {
+bool ofxImageSequencePlayer::isPlaying() const {
     return bPlaying;
 }
 
@@ -278,7 +341,7 @@ float ofxImageSequencePlayer::getSpeed() {
     return speed;
 }
 
-float ofxImageSequencePlayer::getDuration() {
+float ofxImageSequencePlayer::getDuration() const {
     return duration;
 }
 
@@ -322,16 +385,18 @@ void ofxImageSequencePlayer::setFrame(int value) {
         return;
     }
     frameIndex = index;
+    playerTex = imageSequenceTextures[frameIndex];
     bNewFrame = true;
+    bUpdatePixels = true;
     
     position = frameIndex / (float)frameLastIndex;
 }
 
-int	ofxImageSequencePlayer::getCurrentFrame() {
+int	ofxImageSequencePlayer::getCurrentFrame() const {
     return frameIndex;
 }
 
-int	ofxImageSequencePlayer::getTotalNumFrames() {
+int	ofxImageSequencePlayer::getTotalNumFrames() const {
     return framesTotal;
 }
 
@@ -401,4 +466,8 @@ void ofxImageSequencePlayer::previousFrame() {
     }
     
     setFrame(index);
+}
+
+void ofxImageSequencePlayer::draw(float _x, float _y, float _w, float _h) const {
+    ofGetCurrentRenderer()->draw(*this,_x,_y,_w,_h);
 }

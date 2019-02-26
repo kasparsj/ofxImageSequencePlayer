@@ -8,7 +8,7 @@
 
 #include "ofMain.h"
 
-class ofxImageSequencePlayer : public ofBaseVideoPlayer {
+class ofxImageSequencePlayer : public ofBaseVideoPlayer, public ofBaseVideoDraws {
 
 public:
     
@@ -17,32 +17,43 @@ public:
     
     void setFrameRate(float value);
     
-    bool loadMovie(string name);
-    bool loadMovie(const vector<string> & imagePaths);
+    bool load(std::string name);
+    bool load(const std::vector<std::string> & imagePaths);
     void close();
     void update();
 	
 	bool setPixelFormat(ofPixelFormat pixelFormat);
-	ofPixelFormat getPixelFormat();
+	ofPixelFormat getPixelFormat() const;
 	
     void play();
     void stop();
 	
-    bool isFrameNew();
-    unsigned char * getPixels();
-    ofPixelsRef	getPixelsRef();
-    ofTexture *	getTexture();
+    bool isFrameNew() const;
+    ofPixels & getPixels();
+    const ofPixels & getPixels() const {
+        return const_cast<ofxImageSequencePlayer *>(this)->getPixels();
+    }
+    ofTexture & getTexture();
+    const ofTexture & getTexture() const {
+        return const_cast<ofxImageSequencePlayer *>(this)->getTexture();
+    }
+    vector<ofTexture> & getTexturePlanes();
+    const vector<ofTexture> & getTexturePlanes() const;
+    void setUseTexture(bool bUseTex);
+    bool isUsingTexture() const {
+        return true;
+    }
 	
-    float getWidth();
-    float getHeight();
+    float getWidth() const;
+    float getHeight() const;
 	
-    bool isPaused();
-    bool isLoaded();
-    bool isPlaying();
+    bool isPaused() const;
+    bool isLoaded() const;
+    bool isPlaying() const;
 	
     float getPosition();
     float getSpeed();
-    float getDuration();
+    float getDuration() const;
     bool getIsMovieDone();
     float getFrameRate();
 	
@@ -53,23 +64,35 @@ public:
     void setSpeed(float speed);
     void setFrame(int frame);  // frame 0 = first frame...
 	
-    int	getCurrentFrame();
-    int	getTotalNumFrames();
+    int	getCurrentFrame() const;
+    int	getTotalNumFrames() const;
     ofLoopType getLoopState();
 	
     void firstFrame();
     void nextFrame();
     void previousFrame();
     
+    void draw(float x, float y, float w, float h) const;
+    
+    static std::pair<std::string, std::string> getPrefixAndNumber(std::string name);
+    static std::vector<std::string> getSequence(std::string dirPath, std::string prefix, std::string start, std::string ext);
+    static const std::vector<std::string> allowedExt;
+    static bool isAllowedExt(std::string ext);
+    
 protected:
     
-    vector<string> imageSequencePaths;
-    vector<ofTexture *> imageSequenceTextures;
+    std::vector<std::string> imageSequencePaths;
+    std::vector<ofTexture *> imageSequenceTextures;
+    std::vector<ofTexture> tex;
+    ofTexture * playerTex;
+    
+    ofPixels pixels;
     
     bool bLoaded;
     bool bPlaying;
     bool bPaused;
     bool bNewFrame;
+    bool bUpdatePixels;
     
     int frameIndex;
     int frameLastIndex;
